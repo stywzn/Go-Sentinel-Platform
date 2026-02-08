@@ -1,61 +1,63 @@
 package mq
 
 import (
+	"fmt"
 	"log"
 
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/spf13/viper"
+	"github.com/streadway/amqp"
 )
 
-// 定义队列名称
-const QueueName = "scan_tasks"
+var Conn *amqp.Connection
+var Channel *amqp.Channel
+var QueueName string
 
-// FailOnError 错误处理辅助函数
-func FailOnError(err error, msg string) {
+func Init() {
+	// 读取配置
+	url := fmt.Sprintf("amqp://%s:%s@%s:%s/",
+		viper.GetString("rabbitmq.user"),
+		viper.GetString("rabbitmq.password"),
+		viper.GetString("rabbitmq.host"),
+		viper.GetString("rabbitmq.port"),
+	)
+
+	var err error
+	Conn, err = amqp.Dial(url)
 	if err != nil {
-		log.Fatalf("%s: %s", msg, err)
+		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
 	}
-}
 
-// PublishTask 发送任务到队列 (生产者)
-func PublishTask(target string) error {
-	// 1. 连接 RabbitMQ (账号密码 guest/guest，端口 5672)
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	Channel, err = Conn.Channel()
 	if err != nil {
-		return err
+		log.Fatalf("Failed to open a channel: %v", err)
 	}
-	defer conn.Close()
 
-	// 2. 创建通道
-	ch, err := conn.Channel()
-	if err != nil {
-		return err
-	}
-	defer ch.Close()
+	QueueName = viper.GetString("rabbitmq.queue_name")
 
-	// 3. 声明队列 (如果队列不存在会自动创建)
-	q, err := ch.QueueDeclare(
-		QueueName, // 队列名字
-		true,      // durable: 持久化 (重启 MQ 消息还在)
+	// 声明队列
+	_, err = Channel.QueueDeclare(
+		QueueName, // name
+		true,      // durable
 		false,     // delete when unused
 		false,     // exclusive
 		false,     // no-wait
 		nil,       // arguments
 	)
 	if err != nil {
-		return err
+		log.Fatalf("Failed to declare a queue: %v", err)
 	}
+	log.Println("RabbitMQ connected.")
+}
 
-	// 4. 发送消息
-	err = ch.Publish(
-		"",     // exchange
-		q.Name, // routing key
-		false,  // mandatory
-		false,  // immediate
+// 👇 关键在这里！必须定义 Publish 函数 👇
+func Publish(body string) error {
+	return Channel.Publish(
+		"",        // exchange
+		QueueName, // routing key
+		false,     // mandatory
+		false,     // immediate
 		amqp.Publishing{
 			ContentType: "text/plain",
-			Body:        []byte(target),
+			Body:        []byte(body),
 		})
-
-	log.Printf(" [x] Sent Task: %s", target)
-	return err
 }

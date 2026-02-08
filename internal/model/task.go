@@ -1,13 +1,21 @@
 package model
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 )
 
+// Task 对应数据库里的 tasks 表
 type Task struct {
-	gorm.Model
-	Target string `json:"target"`
-	Status string `json:"status"` // PENDING, RUNNING, FINISHED
-	// 👇 新增这个字段，用来存 "[80, 443]" 这样的字符串
-	Results string `json:"results"`
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	Target string `json:"target"` // 扫描目标
+	Status string `json:"status"` // 状态: Pending, Running, Completed
+
+	// 👇 之前可能缺了这一行，加上它！
+	Result string `json:"result"` // 扫描结果
+
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }

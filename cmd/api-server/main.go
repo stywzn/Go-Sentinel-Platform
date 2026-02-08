@@ -2,10 +2,11 @@ package main
 
 import (
 	"net/http"
+	"strconv" // <--- 必须导入这个，用来把 ID 转成字符串
 
 	"github.com/gin-gonic/gin"
-	// 👇 改成你的 module 名
 	"github.com/stywzn/Go-Sentinel-Platform/internal/model"
+	"github.com/stywzn/Go-Sentinel-Platform/pkg/config" // <--- 别忘了初始化配置
 	"github.com/stywzn/Go-Sentinel-Platform/pkg/db"
 	"github.com/stywzn/Go-Sentinel-Platform/pkg/mq"
 )
@@ -15,8 +16,10 @@ type ScanRequest struct {
 }
 
 func main() {
-	// 1. 初始化数据库
-	db.InitMySQL()
+	// 1. 初始化各组件 (注意：名字是 Init，不是 InitMySQL)
+	config.InitConfig()
+	db.Init()
+	mq.Init()
 
 	r := gin.Default()
 
@@ -28,14 +31,24 @@ func main() {
 			return
 		}
 
+		// A. 写入数据库 (状态: Pending)
 		newTask := model.Task{
 			Target: req.Target,
-			Status: "PENDING",
+			Status: "Pending", // 保持状态大写或小写一致，建议 "Pending"
 		}
-		db.DB.Create(&newTask)
 
-		// 发送消息到 RabbitMQ
-		err := mq.PublishTask(newTask.Target)
+		// 注意：这里用 db.DB.Create
+		if err := db.DB.Create(&newTask).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "数据库写入失败"})
+			return
+		}
+
+		// B. 发送消息到 RabbitMQ
+		// 关键修正：
+		// 1. 函数名改成 mq.Publish (配合 pkg/mq/rabbitmq.go)
+		// 2. 发送的是 Task ID，不是 Target (配合 Worker 的逻辑)
+		err := mq.Publish(strconv.Itoa(int(newTask.ID)))
+
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "任务入队失败"})
 			return
@@ -48,7 +61,7 @@ func main() {
 		})
 	})
 
-	// 3. 👇 [新增] 查询任务详情接口
+	// 3. 查询任务详情接口
 	r.GET("/api/task", func(c *gin.Context) {
 		id := c.Query("id")
 		if id == "" {
@@ -65,7 +78,7 @@ func main() {
 
 		c.JSON(http.StatusOK, gin.H{
 			"code": 200,
-			"data": task, // 这里会自动包含 Results 字段
+			"data": task,
 		})
 	})
 
