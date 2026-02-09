@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/stywzn/Go-Sentinel-Platform/pkg/config"
+	"github.com/stywzn/Go-Cloud-Compute/pkg/config"
 )
 
 var DB *redis.Client

@@ -1,4 +1,4 @@
-module github.com/stywzn/Go-Sentinel-Platform
+module github.com/stywzn/Go-Cloud-Compute
 
 go 1.24.0
 
@@ -9,6 +9,7 @@ require (
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/spf13/viper v1.21.0
 	github.com/streadway/amqp v1.1.0
+	github.com/stywzn/Go-Cloud-Compute v0.0.0-20260209140529-5914d5a2d0ff
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	gorm.io/driver/mysql v1.6.0

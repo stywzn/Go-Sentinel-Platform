@@ -4,9 +4,10 @@ import (
 	"context"
 	"io"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
-	pb "github.com/stywzn/Go-Sentinel-Platform/api/proto"
+	pb "github.com/stywzn/Go-Cloud-Compute/api/proto"
 )
 
 type SentinelServer struct {
@@ -36,10 +37,23 @@ func (s *SentinelServer) Heartbeat(stream pb.SentinelService_HeartbeatServer) er
 			return err
 		}
 
-		log.Printf("[Heartbeat] ID: %s | CPU: %.1f%%", req.AgentId, req.CpuUsage)
+		log.Printf(" [Heartbeat] ID: %s", req.AgentId)
+
+		var jobToSend *pb.Job = nil
+
+		if time.Now().Unix()%5 == 0 {
+			log.Printf(" [Dispatch] 正在派发 PING 任务给 %s", req.AgentId)
+
+			jobToSend = &pb.Job{
+				JobId:   uuid.New().String(),
+				Type:    pb.JobType_PING,
+				Payload: "8.8.8.8",
+			}
+		}
 
 		err = stream.Send(&pb.HeartbeatResp{
 			ConfigOutdated: false,
+			Job:            jobToSend,
 		})
 		if err != nil {
 			log.Printf(" 发送失败: %v", err)

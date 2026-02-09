@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SentinelService_Register_FullMethodName  = "/sentinel.SentinelService/Register"
-	SentinelService_Heartbeat_FullMethodName = "/sentinel.SentinelService/Heartbeat"
+	SentinelService_Register_FullMethodName        = "/sentinel.SentinelService/Register"
+	SentinelService_Heartbeat_FullMethodName       = "/sentinel.SentinelService/Heartbeat"
+	SentinelService_ReportJobStatus_FullMethodName = "/sentinel.SentinelService/ReportJobStatus"
 )
 
 // SentinelServiceClient is the client API for SentinelService service.
@@ -29,6 +30,7 @@ const (
 type SentinelServiceClient interface {
 	Register(ctx context.Context, in *RegisterReq, opts ...grpc.CallOption) (*RegisterResp, error)
 	Heartbeat(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[HeartbeatReq, HeartbeatResp], error)
+	ReportJobStatus(ctx context.Context, in *ReportJobReq, opts ...grpc.CallOption) (*ReportJobResp, error)
 }
 
 type sentinelServiceClient struct {
@@ -62,12 +64,23 @@ func (c *sentinelServiceClient) Heartbeat(ctx context.Context, opts ...grpc.Call
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SentinelService_HeartbeatClient = grpc.BidiStreamingClient[HeartbeatReq, HeartbeatResp]
 
+func (c *sentinelServiceClient) ReportJobStatus(ctx context.Context, in *ReportJobReq, opts ...grpc.CallOption) (*ReportJobResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportJobResp)
+	err := c.cc.Invoke(ctx, SentinelService_ReportJobStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SentinelServiceServer is the server API for SentinelService service.
 // All implementations must embed UnimplementedSentinelServiceServer
 // for forward compatibility.
 type SentinelServiceServer interface {
 	Register(context.Context, *RegisterReq) (*RegisterResp, error)
 	Heartbeat(grpc.BidiStreamingServer[HeartbeatReq, HeartbeatResp]) error
+	ReportJobStatus(context.Context, *ReportJobReq) (*ReportJobResp, error)
 	mustEmbedUnimplementedSentinelServiceServer()
 }
 
@@ -83,6 +96,9 @@ func (UnimplementedSentinelServiceServer) Register(context.Context, *RegisterReq
 }
 func (UnimplementedSentinelServiceServer) Heartbeat(grpc.BidiStreamingServer[HeartbeatReq, HeartbeatResp]) error {
 	return status.Error(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedSentinelServiceServer) ReportJobStatus(context.Context, *ReportJobReq) (*ReportJobResp, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportJobStatus not implemented")
 }
 func (UnimplementedSentinelServiceServer) mustEmbedUnimplementedSentinelServiceServer() {}
 func (UnimplementedSentinelServiceServer) testEmbeddedByValue()                         {}
@@ -130,6 +146,24 @@ func _SentinelService_Heartbeat_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type SentinelService_HeartbeatServer = grpc.BidiStreamingServer[HeartbeatReq, HeartbeatResp]
 
+func _SentinelService_ReportJobStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportJobReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SentinelServiceServer).ReportJobStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SentinelService_ReportJobStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SentinelServiceServer).ReportJobStatus(ctx, req.(*ReportJobReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SentinelService_ServiceDesc is the grpc.ServiceDesc for SentinelService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -140,6 +174,10 @@ var SentinelService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Register",
 			Handler:    _SentinelService_Register_Handler,
+		},
+		{
+			MethodName: "ReportJobStatus",
+			Handler:    _SentinelService_ReportJobStatus_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

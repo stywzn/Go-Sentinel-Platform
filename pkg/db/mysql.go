@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/stywzn/Go-Sentinel-Platform/internal/model"
+	"github.com/stywzn/Go-Cloud-Compute/internal/model"
 
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"

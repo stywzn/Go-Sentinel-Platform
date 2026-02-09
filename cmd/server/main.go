@@ -4,8 +4,8 @@ import (
 	"log"
 	"net"
 
-	pb "github.com/stywzn/Go-Sentinel-Platform/api/proto"
-	"github.com/stywzn/Go-Sentinel-Platform/internal/server"
+	pb "github.com/stywzn/Go-Cloud-Compute/api/proto"
+	"github.com/stywzn/Go-Cloud-Compute/internal/server"
 	"google.golang.org/grpc"
 )
 

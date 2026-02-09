@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	pb "github.com/stywzn/Go-Sentinel-Platform/api/proto"
+	pb "github.com/stywzn/Go-Cloud-Compute/api/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -63,8 +63,18 @@ func main() {
 		if err != nil {
 			log.Fatal("与 Server 断开连接: %v", err)
 		}
-		if resp.ConfigOutdated {
-			log.Println(" 收到指令: 配置已过期，正在拉取新配置...")
+		if resp.Job != nil {
+			log.Printf(" [接单] 收到任务! ID: %s | 类型: %s | 目标: %s",
+				resp.Job.JobId,
+				resp.Job.Type,
+				resp.Job.Payload,
+			)
+			go func(j *pb.Job) {
+				log.Println(" 正在执行任务...", j.JobId)
+				time.Sleep(3 * time.Second)
+				log.Println(" 任务完成:", j.JobId)
+			}(resp.Job)
 		}
+
 	}
 }

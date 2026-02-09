@@ -7,6 +7,7 @@ option go_package = "./;pb";
 service SentinelService{
     rpc Register (RegisterReq)  returns (RegisterResp);
     rpc Heartbeat (stream HeartbeatReq ) returns (stream HeartbeatResp);
+    rpc ReportJobStatus (ReportJobReq) returns (ReportJobResp);
 }
 
 message RegisterReq{
@@ -27,6 +28,30 @@ message HeartbeatReq{
     double mem_usage = 4;
 }
 
+enum JobType{
+    PING = 0;
+    SHELL = 1;
+    SCAN = 2;
+}
+
+message Job{
+    string job_id = 1;
+    JobType type = 2;
+    string payload = 3;
+}
+
+message ReportJobReq{
+    string agent_id = 1;
+    string job_id = 2 ;
+    string status = 3;
+    string result = 4;
+}
+
+message ReportJobResp{
+    bool received = 1;
+}
+
 message HeartbeatResp{
     bool config_outdated = 1;
+    Job job = 2;
 }
