@@ -4,59 +4,78 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/spf13/viper"
 	"github.com/streadway/amqp"
 )
 
-var Conn *amqp.Connection
-var Channel *amqp.Channel
-var QueueName string
-
-func Init() {
-	// 读取配置
-	url := fmt.Sprintf("amqp://%s:%s@%s:%s/",
-		viper.GetString("rabbitmq.user"),
-		viper.GetString("rabbitmq.password"),
-		viper.GetString("rabbitmq.host"),
-		viper.GetString("rabbitmq.port"),
-	)
-
-	var err error
-	Conn, err = amqp.Dial(url)
-	if err != nil {
-		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
-	}
-
-	Channel, err = Conn.Channel()
-	if err != nil {
-		log.Fatalf("Failed to open a channel: %v", err)
-	}
-
-	QueueName = viper.GetString("rabbitmq.queue_name")
-
-	// 声明队列
-	_, err = Channel.QueueDeclare(
-		QueueName, // name
-		true,      // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
-	)
-	if err != nil {
-		log.Fatalf("Failed to declare a queue: %v", err)
-	}
-	log.Println("RabbitMQ connected.")
+type RabbitMQ struct {
+	conn    *amqp.Connection
+	channel *amqp.Channel
+	Queue   string
 }
 
-func Publish(body string) error {
-	return Channel.Publish(
-		"",        // exchange
-		QueueName, // routing key
-		false,     // mandatory
-		false,     // immediate
+func NewRabbitMQ(mqHost string, queueName string) *RabbitMQ {
+	// 连接格式: amqp://账号:密码@地址:端口/
+	dsn := fmt.Sprintf("amqp://guest:guest@%s:5672/", mqHost)
+	conn, err := amqp.Dial(dsn)
+	if err != nil {
+		log.Fatalf("❌ 无法连接 RabbitMQ: %v", err)
+	}
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("❌ 无法创建 Channel: %v", err)
+	}
+
+	// 声明队列 (如果没有就创建)
+	_, err = ch.QueueDeclare(
+		queueName, // 队列名字
+		true,      // 持久化 (重启还在)
+		false,     // 自动删除
+		false,     // 排他性
+		false,     // NoWait
+		nil,       // 参数
+	)
+	if err != nil {
+		log.Fatalf("❌ 无法声明队列: %v", err)
+	}
+
+	return &RabbitMQ{
+		conn:    conn,
+		channel: ch,
+		Queue:   queueName,
+	}
+}
+
+// Publish 发送消息 (生产者)
+func (r *RabbitMQ) Publish(body string) error {
+	err := r.channel.Publish(
+		"",      // Exchange
+		r.Queue, // Routing Key (队列名)
+		false,   // Mandatory
+		false,   // Immediate
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        []byte(body),
-		})
+		},
+	)
+	return err
+}
+
+// Consume 接收消息 (消费者) - 返回一个只读通道
+func (r *RabbitMQ) Consume() (<-chan amqp.Delivery, error) {
+	msgs, err := r.channel.Consume(
+		r.Queue, // 队列名
+		"",      // Consumer Tag
+		true,    // Auto Ack (自动确认收到)
+		false,   // Exclusive
+		false,   // No Local
+		false,   // No Wait
+		nil,     // Args
+	)
+	return msgs, err
+}
+
+func (r *RabbitMQ) Close() {
+	r.channel.Close()
+	r.conn.Close()
 }
