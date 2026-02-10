@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
+	"os"
 
 	"google.golang.org/grpc"
 	"gorm.io/driver/mysql"
@@ -14,7 +16,11 @@ import (
 
 func main() {
 
-	dsn := "root:root@tcp(127.0.0.1:3306)/cloud_compute?charset=utf8mb4&parseTime=True&loc=Local"
+	dbHost := os.Getenv("DB_HOST")
+	if dbHost == "" {
+		dbHost = "127.0.0.1"
+	}
+	dsn := fmt.Sprintf("root:root@tcp(%s:3306)/cloud_compute?charset=utf8mb4&parseTime=True&loc=Local", dbHost)
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf(" 无法连接数据库: %v", err)

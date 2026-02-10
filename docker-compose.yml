@@ -3,59 +3,31 @@ version: '3.8'
 services:
   mysql:
     image: mysql:8.0
+    container_name: cloud-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_DATABASE: sentinel
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: cloud_compute
     ports:
       - "3306:3306"
-    networks:
-      - sentinel-net
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    networks:
-      - sentinel-net
-
-  api-server:
-    build: .
-    command: ./api-server
     restart: always
+
+  server:
+    build: .
+    container_name: cloud-server
+    command: ./server
     ports:
       - "8080:8080"
+      - "9090:9090"
+    environment:
+      - DB_HOST=mysql
     depends_on:
       - mysql
-      - rabbitmq
-    networks:
-      - sentinel-net
 
-  scan-worker:
+  agent:
     build: .
-    command: ./scan-worker
-    restart: always
+    container_name: cloud-agent-01
+    command: ./agent
+    environment:
+      - SERVER_ADDR=server:9090
     depends_on:
-      - mysql
-      - rabbitmq
-    deploy:
-      replicas: 3
-    networks:
-      - sentinel-net
-
-  
-  redis: 
-
-    image: redis:alpine
-    container_name: go-redis-scheduler-redis
-    port:
-      -"6379:6379"
-
-
-networks:
-  sentinel-net:
-    driver: bridge
-
+      - server

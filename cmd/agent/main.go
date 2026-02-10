@@ -29,6 +29,12 @@ func RunLocalCommand(cmdStr string) (string, bool) {
 }
 
 func main() {
+
+	serverAddr := os.Getenv("SERVER_ADDR")
+	if serverAddr == "" {
+		serverAddr = "127.0.0.1:9000"
+	}
+
 	conn, err := grpc.NewClient("localhost:9090", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatal("无法连接 Server: %v", err)
