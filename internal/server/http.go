@@ -1,24 +1,25 @@
 package server
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	pb "github.com/stywzn/Go-Cloud-Compute/api/proto"
+	"github.com/stywzn/Go-Cloud-Compute/pkg/mq"
 	"gorm.io/gorm"
 )
 
 type HttpServer struct {
 	DB  *gorm.DB
 	Srv *SentinelServer
+	MQ  *mq.RabbitMQ
 }
 
-func NewHttpServer(db *gorm.DB, srv *SentinelServer) *HttpServer {
+func NewHttpServer(db *gorm.DB, srv *SentinelServer, rabbit *mq.RabbitMQ) *HttpServer {
 	return &HttpServer{
 		DB:  db,
 		Srv: srv,
+		MQ:  rabbit, // 现在这里认识 rabbit 了
 	}
 }
 
@@ -32,6 +33,7 @@ func (h *HttpServer) Start() {
 
 	r.GET("/agent", func(c *gin.Context) {
 		var agents []AgentModel
+		// 确保这里不出错，如果你没有定义 AgentModel，可能需要检查一下
 		h.DB.Find(&agents)
 		c.JSON(200, gin.H{"code": 200, "data": agents})
 	})
@@ -43,21 +45,27 @@ func (h *HttpServer) Start() {
 			return
 		}
 
-		jobID := fmt.Sprintf("manual-%s-%d", req.TargetAgent, time.Now().UnixNano())
-
-		job := &pb.Job{
-			JobId:   jobID,
-			Type:    pb.JobType_PING,
-			Payload: req.Cmd,
-		}
-		h.Srv.JobQueue.Store(req.TargetAgent, job)
+		// 1. 转成 JSON 字节
+		body, _ := json.Marshal(req)
 		log.Printf("[HTTP] 管理员下发任务 -> %s : %s", req.TargetAgent, req.Cmd)
+
+		// 2. 发送到 MQ (现在参数类型匹配了)
+		err := h.MQ.Publish(c.Request.Context(), body)
+
+		if err != nil {
+			log.Printf("MQ 发送失败: %v", err)
+			c.JSON(500, gin.H{"error": "任务入队失败"})
+			return
+		}
 
 		c.JSON(200, gin.H{
 			"code": 200,
-			"msg":  "任务已进入队列，等待 Agent 心跳领取",
-			"job":  jobID,
+			"msg":  "任务已发送到消息队列 (异步处理)",
+			"info": req,
 		})
 	})
-	r.Run(":8080")
+
+	if err := r.Run(":8080"); err != nil {
+		log.Fatal("HTTP Server 启动失败: ", err)
+	}
 }

@@ -1,22 +1,34 @@
 package mq
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"time"
 
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type RabbitMQ struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
+	Conn    *amqp.Connection
+	Channel *amqp.Channel
 	Queue   string
 }
 
 func NewRabbitMQ(mqHost string, queueName string) *RabbitMQ {
-	// 连接格式: amqp://账号:密码@地址:端口/
 	dsn := fmt.Sprintf("amqp://guest:guest@%s:5672/", mqHost)
-	conn, err := amqp.Dial(dsn)
+	var conn *amqp.Connection
+	var err error
+
+	for i := 0; i < 5; i++ {
+		conn, err = amqp.Dial(dsn)
+		if err == nil {
+			break
+		}
+		log.Printf("⚠️ 连接 MQ 失败，等待 2 秒重试... (%d/5)", i+1)
+		time.Sleep(2 * time.Second)
+	}
+
 	if err != nil {
 		log.Fatalf("❌ 无法连接 RabbitMQ: %v", err)
 	}
@@ -26,56 +38,38 @@ func NewRabbitMQ(mqHost string, queueName string) *RabbitMQ {
 		log.Fatalf("❌ 无法创建 Channel: %v", err)
 	}
 
-	// 声明队列 (如果没有就创建)
-	_, err = ch.QueueDeclare(
-		queueName, // 队列名字
-		true,      // 持久化 (重启还在)
-		false,     // 自动删除
-		false,     // 排他性
-		false,     // NoWait
-		nil,       // 参数
-	)
+	_, err = ch.QueueDeclare(queueName, true, false, false, false, nil)
 	if err != nil {
 		log.Fatalf("❌ 无法声明队列: %v", err)
 	}
 
-	return &RabbitMQ{
-		conn:    conn,
-		channel: ch,
-		Queue:   queueName,
-	}
+	return &RabbitMQ{Conn: conn, Channel: ch, Queue: queueName}
 }
 
-// Publish 发送消息 (生产者)
-func (r *RabbitMQ) Publish(body string) error {
-	err := r.channel.Publish(
-		"",      // Exchange
-		r.Queue, // Routing Key (队列名)
-		false,   // Mandatory
-		false,   // Immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        []byte(body),
-		},
-	)
-	return err
+// Publish 发送消息
+func (r *RabbitMQ) Publish(ctx context.Context, body []byte) error {
+	return r.Channel.PublishWithContext(ctx, "", r.Queue, false, false, amqp.Publishing{
+		ContentType: "application/json",
+		Body:        body,
+	})
 }
 
-// Consume 接收消息 (消费者) - 返回一个只读通道
+// 👇 新增：Consume 接收消息
+// 返回一个只读的通道 (<-chan)，外面可以通过 range 来遍历消息
 func (r *RabbitMQ) Consume() (<-chan amqp.Delivery, error) {
-	msgs, err := r.channel.Consume(
+	msgs, err := r.Channel.Consume(
 		r.Queue, // 队列名
-		"",      // Consumer Tag
-		true,    // Auto Ack (自动确认收到)
-		false,   // Exclusive
-		false,   // No Local
-		false,   // No Wait
-		nil,     // Args
+		"",      // consumer tag
+		true,    // auto-ack (自动确认收到，简单起见先设为 true)
+		false,   // exclusive
+		false,   // no-local
+		false,   // no-wait
+		nil,     // args
 	)
 	return msgs, err
 }
 
 func (r *RabbitMQ) Close() {
-	r.channel.Close()
-	r.conn.Close()
+	r.Channel.Close()
+	r.Conn.Close()
 }

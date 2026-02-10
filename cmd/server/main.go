@@ -1,14 +1,11 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"os"
 
 	"google.golang.org/grpc"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
 
 	pb "github.com/stywzn/Go-Cloud-Compute/api/proto"
 	"github.com/stywzn/Go-Cloud-Compute/internal/server"
@@ -17,8 +14,17 @@ import (
 )
 
 func main() {
-
+	// 1. 初始化数据库 (使用 pkg/db 包，不要自己在 main 里写连接代码)
 	db.InitMySQL()
+
+	// 自动迁移表结构 (使用全局的 db.DB)
+	// 确保 AgentModel 和 JobRecord 在 internal/server 里定义了
+	err := db.DB.AutoMigrate(&server.AgentModel{}, &server.JobRecord{})
+	if err != nil {
+		log.Printf("⚠️ 自动建表警告: %v", err)
+	}
+
+	// 2. 初始化 RabbitMQ
 	mqHost := os.Getenv("MQ_HOST")
 	if mqHost == "" {
 		mqHost = "localhost"
@@ -26,40 +32,38 @@ func main() {
 	rabbit := mq.NewRabbitMQ(mqHost, "job_queue")
 	defer rabbit.Close()
 
-	dbHost := os.Getenv("DB_HOST")
-	if dbHost == "" {
-		dbHost = "127.0.0.1"
+	// 3. 准备 gRPC 服务
+	// 注意：这里手动初始化 SentinelServer，把数据库传给它
+	// 如果 server 包里有 NewSentinelServer 函数，最好用那个
+	srv := &server.SentinelServer{
+		DB: db.DB,
 	}
-	dsn := fmt.Sprintf("root:root@tcp(%s:3306)/cloud_compute?charset=utf8mb4&parseTime=True&loc=Local", dbHost)
-	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+
+	// 创建 gRPC 服务器
+	grpcServer := grpc.NewServer()
+	pb.RegisterSentinelServiceServer(grpcServer, srv)
+
+	// 4. 准备 HTTP 服务
+	// 关键点：参数顺序必须对应 (DB, gRPC服务, RabbitMQ)
+	httpSrv := server.NewHttpServer(db.DB, srv, rabbit)
+
+	srv.StartConsumer(rabbit)
+
+	// 5. 启动监听
+	lis, err := net.Listen("tcp", ":9090")
 	if err != nil {
-		log.Fatalf(" 无法连接数据库: %v", err)
+		log.Fatalf("❌ 端口监听失败: %v", err)
 	}
-	log.Println(" 数据库连接成功!")
 
-	err = db.AutoMigrate(&server.AgentModel{}, &server.JobRecord{})
-	if err != nil {
-		log.Fatalf(" 自动建表失败: %v", err)
-	}
-	log.Println("表结构同步完成 (AgentModel + JobRecord)")
-
-	s := grpc.NewServer()
-	srv := &server.SentinelServer{DB: db}
-	pb.RegisterSentinelServiceServer(s, srv)
-
+	// 启动 HTTP (协程)
 	go func() {
-		httpSrv := server.NewHttpServer(db, srv)
-		log.Println("HTTP Management API 已启动 | 监听端口 :8080")
+		log.Println("🚀 HTTP Server 启动在 :8080")
 		httpSrv.Start()
 	}()
 
-	lis, err := net.Listen("tcp", ":9090")
-	if err != nil {
-		log.Fatalf("端口监听失败: %v", err)
-	}
-	log.Println("Sentinel Control Plane 已启动 | 监听端口 :9090")
-
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("gRPC 服务启动失败: %v", err)
+	// 启动 gRPC (主线程阻塞)
+	log.Println("🚀 Sentinel gRPC 启动在 :9090")
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("❌ gRPC 服务崩溃: %v", err)
 	}
 }
