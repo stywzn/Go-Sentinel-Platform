@@ -4,27 +4,42 @@ import (
 	"log"
 	"net"
 
+	"google.golang.org/grpc"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+
 	pb "github.com/stywzn/Go-Cloud-Compute/api/proto"
 	"github.com/stywzn/Go-Cloud-Compute/internal/server"
-	"google.golang.org/grpc"
 )
 
 func main() {
-	port := ":9090"
-	lis, err := net.Listen("tcp", port)
+
+	dsn := "root:root@tcp(127.0.0.1:3306)/cloud_compute?charset=utf8mb4&parseTime=True&loc=Local"
+
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf(" 端口被占用或无法监听: %v", err)
+		log.Fatalf(" 无法连接数据库: %v", err)
 	}
+	log.Println(" 数据库连接成功!")
 
-	grpcServer := grpc.NewServer()
-
-	handler := &server.SentinelServer{}
-	pb.RegisterSentinelServiceServer(grpcServer, handler)
-
-	log.Printf(" Sentinel Control Plane 已启动 | 监听端口 %s", port)
-
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf(" 服务器崩溃: %v", err)
+	err = db.AutoMigrate(&server.AgentModel{})
+	if err != nil {
+		log.Fatalf(" 自动建表失败: %v", err)
 	}
+	log.Println(" 数据库表结构同步完成")
 
+	lis, err := net.Listen("tcp", ":9090")
+	if err != nil {
+		log.Fatalf("端口监听失败: %v", err)
+	}
+	log.Println("Sentinel Control Plane 已启动 | 监听端口 :9090")
+
+	s := grpc.NewServer()
+
+	srv := &server.SentinelServer{DB: db}
+	pb.RegisterSentinelServiceServer(s, srv)
+
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("gRPC 服务启动失败: %v", err)
+	}
 }
