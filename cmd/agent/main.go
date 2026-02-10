@@ -70,9 +70,25 @@ func main() {
 				resp.Job.Payload,
 			)
 			go func(j *pb.Job) {
-				log.Println(" 正在执行任务...", j.JobId)
-				time.Sleep(3 * time.Second)
-				log.Println(" 任务完成:", j.JobId)
+
+				log.Printf(" [执行中] 正在执行任务 ID: %s", j.JobId)
+				time.Sleep(2 * time.Second)
+
+				reportCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				_, err := client.ReportJobStatus(reportCtx, &pb.ReportJobReq{
+					AgentId: regResp.AgentId,
+					JobId:   j.JobId,
+					Status:  "Success",
+					Result:  "Ping 8.8.8.8 延迟 20ms",
+				})
+
+				if err != nil {
+					log.Printf(" 汇报失败: %v", err)
+				} else {
+					log.Printf(" [汇报成功] 任务结果已发送给 Server")
+				}
 			}(resp.Job)
 		}
 

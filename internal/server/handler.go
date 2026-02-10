@@ -61,3 +61,13 @@ func (s *SentinelServer) Heartbeat(stream pb.SentinelService_HeartbeatServer) er
 		}
 	}
 }
+
+func (s *SentinelServer) ReportJobStatus(ctx context.Context, req *pb.ReportJobReq) (*pb.ReportJobResp, error) {
+
+	log.Printf(" [Report] 收到任务汇报! Agent: %s | Job: %s | 状态: %s | 结果: %s",
+		req.AgentId, req.JobId, req.Status, req.Result)
+
+	return &pb.ReportJobResp{
+		Received: true,
+	}, nil
+}
